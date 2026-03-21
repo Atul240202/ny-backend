@@ -1,0 +1,10 @@
+.git
+.gitignore
+.DS_Store
+*.md
+.vscode
+.idea
+coverage
+.env.example
+Dockerfile
+.dockerignore
