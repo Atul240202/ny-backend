@@ -34,12 +34,17 @@ export const googleAuth = async (req, res) => {
     const client = new OAuth2Client(GOOGLE_CLIENT_ID);
     const { idToken } = req.body;
 
+    logger.info('Google auth request received', { hasIdToken: !!idToken });
+
     if (!idToken) {
+      logger.warn('Google auth failed: idToken is missing');
       return res.status(400).json({
         success: false,
         message: 'idToken is required',
       });
     }
+
+    logger.debug('Verifying Google ID token...');
 
     const ticket = await client.verifyIdToken({
       idToken,
@@ -49,11 +54,14 @@ export const googleAuth = async (req, res) => {
     const payload = ticket.getPayload();
 
     if (!payload) {
+      logger.warn('Google auth failed: Invalid token payload');
       return res.status(401).json({
         success: false,
         message: 'Invalid Google token',
       });
     }
+
+    logger.info('Google token verified successfully', { email: payload.email });
 
     const googleId = payload.sub;
     const email = payload.email;
@@ -70,6 +78,9 @@ export const googleAuth = async (req, res) => {
         photoUrl,
         onboardingCompleted: false,
       });
+      logger.info('New user created via Google Auth', { userId: user._id, email: user.email });
+    } else {
+      logger.info('Existing user logged in via Google Auth', { userId: user._id, email: user.email });
     }
 
     const token = jwt.sign(
@@ -77,6 +88,8 @@ export const googleAuth = async (req, res) => {
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN },
     );
+
+    logger.debug('Google Auth successful, returning token');
 
     return res.json({
       success: true,
