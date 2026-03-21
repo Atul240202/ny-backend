@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 
 import User from '../models/User.js';
 import { logger } from '../utils/logger.js';
-import UserProfile from '../models/UserProfile.js';
+import UserProfile from '../models/userProfile.js';
 import { ONBOARDING_V1, ONBOARDING_VERSION } from '../constants/onboardingQuestions.js';
 
 export const createUser = async (request, response) => {

@@ -1,4 +1,4 @@
-import UserProfile from '../models/UserProfile.js';
+import UserProfile from '../models/userProfile.js';
 import { logger } from '../utils/logger.js';
 
 // POST /user-profiles
