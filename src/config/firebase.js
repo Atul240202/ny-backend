@@ -25,12 +25,7 @@ export const initializeFirebase = () => {
   try {
     let credential;
 
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-      const serviceAccountPath = join(__dirname, process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
-      const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
-      credential = admin.credential.cert(serviceAccount);
-      logger.info('Firebase initialized with service account file');
-    } else if (
+    if (
       process.env.FIREBASE_PROJECT_ID &&
       process.env.FIREBASE_PRIVATE_KEY &&
       process.env.FIREBASE_CLIENT_EMAIL
@@ -41,14 +36,26 @@ export const initializeFirebase = () => {
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
       });
       logger.info('Firebase initialized with environment variables');
+    } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
+      const serviceAccountPath = join(__dirname, process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+      const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+      credential = admin.credential.cert(serviceAccount);
+      logger.info('Firebase initialized with service account file via path');
     } else {
       try {
         const serviceAccountPath = join(__dirname, 'serviceAccountKey.json');
         const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
-        credential = admin.credential.cert(serviceAccount);
-        logger.info('Firebase initialized with default service account file');
-      } catch {
-        logger.warn('Firebase credentials not found. Push notifications will not work.');
+        
+        // Basic validation to check if it's a real key or just a template
+        if (serviceAccount.private_key && serviceAccount.private_key.includes('BEGIN PRIVATE KEY')) {
+          credential = admin.credential.cert(serviceAccount);
+          logger.info('Firebase initialized with local serviceAccountKey.json');
+        } else {
+          throw new Error('Local service account key is empty or invalid');
+        }
+      } catch (error) {
+        logger.warn('Firebase credentials not found or invalid in environment variables or local file.');
+        logger.warn('Push notifications and other Firebase services will not work.');
         return null;
       }
     }
