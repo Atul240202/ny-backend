@@ -1,4 +1,4 @@
-import AppConstant from '../models/AppConstant.js';
+import AppConstant from '../models/appConstant.js';
 import { logger } from '../utils/logger.js';
 
 // GET /app-constants/:type/:stepId
