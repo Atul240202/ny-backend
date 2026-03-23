@@ -24,6 +24,31 @@ export const batchUploadSchema = Joi.object({
         accel_y: Joi.number().allow(null).optional().default(0),
         accel_z: Joi.number().allow(null).optional().default(0),
         step_count: Joi.number().integer().min(0).allow(null).optional().default(0),
+        /* Timestamp fields for delay tracking */
+        sensor_datetime: Joi.number().allow(null).optional().default(0),
+        watch_data_send_datetime: Joi.number().allow(null).optional().default(0),
+        mobile_receive_datetime: Joi.number().allow(null).optional().default(0),
+        mobile_send_datetime: Joi.number().allow(null).optional().default(0),
+        mobile_receive_error_code: Joi.string()
+          .allow(null)
+          .valid(
+            null,
+            'WATCH_DISCONNECTED',
+            'PUSH_TIMEOUT',
+            'PULL_BACKUP',
+            'NETWORK_ERROR',
+            'AUTH_ERROR',
+            'VALIDATION_ERROR',
+            'SERVER_ERROR',
+            'MONGODB_SYNC_FAILED',
+            'UNKNOWN_ERROR',
+          )
+          .optional()
+          .default(null),
+        data_source: Joi.string()
+          .valid('PUSH', 'PULL', 'UNKNOWN')
+          .optional()
+          .default('PUSH'),
       }).unknown(false),
     )
     .min(1)
