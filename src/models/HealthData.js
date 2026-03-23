@@ -50,6 +50,46 @@ const healthDataSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    /* Timestamp fields for delay tracking and analysis */
+    sensor_datetime: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
+    watch_data_send_datetime: {
+      type: Number,
+      default: 0,
+    },
+    mobile_receive_datetime: {
+      type: Number,
+      default: 0,
+    },
+    mobile_send_datetime: {
+      type: Number,
+      default: 0,
+    },
+    mobile_receive_error_code: {
+      type: String,
+      default: null,
+      enum: [
+        null,
+        'WATCH_DISCONNECTED',      // Watch not connected via Bluetooth
+        'PUSH_TIMEOUT',             // PUSH mechanism failed/delayed
+        'PULL_BACKUP',              // Normal PULL as backup
+        'NETWORK_ERROR',            // No internet connection
+        'AUTH_ERROR',               // Authentication failed
+        'VALIDATION_ERROR',         // Data validation failed
+        'SERVER_ERROR',             // Backend server error
+        'MONGODB_SYNC_FAILED',      // MongoDB sync failed
+        'UNKNOWN_ERROR',            // Unknown error
+      ],
+    },
+    data_source: {
+      type: String,
+      default: 'PUSH',
+      enum: ['PUSH', 'PULL', 'UNKNOWN'],
+      index: true,
+    },
   },
   {
     timestamps: true,
