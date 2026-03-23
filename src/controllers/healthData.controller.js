@@ -38,6 +38,13 @@ const transformHealthEntry = (entry) => {
     accel_y: entry.accel_y !== null && entry.accel_y !== undefined ? Number(entry.accel_y) : 0,
     accel_z: entry.accel_z !== null && entry.accel_z !== undefined ? Number(entry.accel_z) : 0,
     step_count: entry.step_count !== null && entry.step_count !== undefined ? Number(entry.step_count) : 0,
+    /* Timestamp fields */
+    sensor_datetime: entry.sensor_datetime !== null && entry.sensor_datetime !== undefined ? Number(entry.sensor_datetime) : 0,
+    watch_data_send_datetime: entry.watch_data_send_datetime !== null && entry.watch_data_send_datetime !== undefined ? Number(entry.watch_data_send_datetime) : 0,
+    mobile_receive_datetime: entry.mobile_receive_datetime !== null && entry.mobile_receive_datetime !== undefined ? Number(entry.mobile_receive_datetime) : 0,
+    mobile_send_datetime: entry.mobile_send_datetime !== null && entry.mobile_send_datetime !== undefined ? Number(entry.mobile_send_datetime) : 0,
+    mobile_receive_error_code: entry.mobile_receive_error_code || null,
+    data_source: entry.data_source || 'PUSH',
   };
 };
 
@@ -179,6 +186,291 @@ export const getUserHealthData = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Internal server error',
+    });
+  }
+};
+
+
+/**
+ * Get health data with timestamps in IST
+ * Displays all timestamp fields converted to Indian Standard Time
+ *
+ * Query Parameters:
+ * - user_id: Filter by user ID (optional)
+ * - limit: Number of records (default: 50, max: 500)
+ * - page: Page number (default: 1)
+ *
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Promise<Object>} Response with health data in IST
+ */
+export const getHealthDataWithIST = async (req, res) => {
+  try {
+    const { user_id, limit = 50, page = 1 } = req.query;
+
+    const limitValue = Math.min(parseInt(limit, 10) || 50, 500);
+    const pageValue = parseInt(page, 10) || 1;
+    const skip = (pageValue - 1) * limitValue;
+
+    const query = {};
+    if (user_id) {
+      query.user_id = user_id;
+    }
+
+    /* Get data with timestamp fields */
+    const data = await HealthData.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitValue)
+      .lean();
+
+    const total = await HealthData.countDocuments(query);
+
+    /* Convert timestamps to IST */
+    const dataWithIST = data.map(record => {
+      const convertToIST = (unixTimestamp) => {
+        if (!unixTimestamp || unixTimestamp === 0) return null;
+
+        const date = new Date(unixTimestamp);
+        return date.toLocaleString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        });
+      };
+
+      /* Calculate delays in seconds */
+      const calculateDelay = (end, start) => {
+        if (!end || !start || end === 0 || start === 0) return null;
+        return ((end - start) / 1000).toFixed(2);
+      };
+
+      return {
+        _id: record._id,
+        user_id: record.user_id,
+        timestamp: record.timestamp,
+
+        /* Sensor data */
+        rr_interval_ms: record.rr_interval_ms,
+        accel_x: record.accel_x,
+        accel_y: record.accel_y,
+        accel_z: record.accel_z,
+        step_count: record.step_count,
+
+        /* Timestamps in IST */
+        sensor_datetime_ist: convertToIST(record.sensor_datetime),
+        watch_data_send_datetime_ist: convertToIST(record.watch_data_send_datetime),
+        mobile_receive_datetime_ist: convertToIST(record.mobile_receive_datetime),
+        mobile_send_datetime_ist: convertToIST(record.mobile_send_datetime),
+
+        /* Original Unix timestamps (for reference) */
+        sensor_datetime_unix: record.sensor_datetime,
+        watch_data_send_datetime_unix: record.watch_data_send_datetime,
+        mobile_receive_datetime_unix: record.mobile_receive_datetime,
+        mobile_send_datetime_unix: record.mobile_send_datetime,
+
+        /* Delay analysis (in seconds) */
+        delays: {
+          sensor_to_watch_send: calculateDelay(record.watch_data_send_datetime, record.sensor_datetime),
+          watch_send_to_mobile_receive: calculateDelay(record.mobile_receive_datetime, record.watch_data_send_datetime),
+          mobile_receive_to_send: calculateDelay(record.mobile_send_datetime, record.mobile_receive_datetime),
+          total_end_to_end: calculateDelay(record.mobile_send_datetime, record.sensor_datetime),
+        },
+
+        /* Error tracking */
+        mobile_receive_error_code: record.mobile_receive_error_code,
+
+        /* MongoDB timestamps */
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      };
+    });
+
+    logger.info('Health data with IST retrieved', {
+      count: dataWithIST.length,
+      total,
+      user_id: user_id || 'all',
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Health data retrieved successfully',
+      data: dataWithIST,
+      pagination: {
+        total,
+        page: pageValue,
+        limit: limitValue,
+        pages: Math.ceil(total / limitValue),
+      },
+    });
+
+  } catch (error) {
+    logger.error('Get health data with IST failed', { error: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get timestamp delay statistics in IST
+ * Provides average, min, max delays for each stage
+ *
+ * Query Parameters:
+ * - user_id: Filter by user ID (optional)
+ * - startDate: Start date filter (optional)
+ * - endDate: End date filter (optional)
+ *
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Promise<Object>} Response with delay statistics
+ */
+export const getTimestampStats = async (req, res) => {
+  try {
+    const { user_id, startDate, endDate } = req.query;
+
+    const matchStage = {
+      sensor_datetime: { $gt: 0 },
+      watch_data_send_datetime: { $gt: 0 },
+      mobile_receive_datetime: { $gt: 0 },
+      mobile_send_datetime: { $gt: 0 },
+    };
+
+    if (user_id) {
+      matchStage.user_id = user_id;
+    }
+
+    if (startDate) {
+      matchStage.createdAt = { $gte: new Date(startDate) };
+    }
+
+    if (endDate) {
+      matchStage.createdAt = { ...matchStage.createdAt, $lte: new Date(endDate) };
+    }
+
+    const stats = await HealthData.aggregate([
+      { $match: matchStage },
+      {
+        $project: {
+          sensor_to_watch_delay: {
+            $divide: [
+              { $subtract: ['$watch_data_send_datetime', '$sensor_datetime'] },
+              1000,
+            ],
+          },
+          watch_to_mobile_delay: {
+            $divide: [
+              { $subtract: ['$mobile_receive_datetime', '$watch_data_send_datetime'] },
+              1000,
+            ],
+          },
+          mobile_processing_delay: {
+            $divide: [
+              { $subtract: ['$mobile_send_datetime', '$mobile_receive_datetime'] },
+              1000,
+            ],
+          },
+          total_delay: {
+            $divide: [
+              { $subtract: ['$mobile_send_datetime', '$sensor_datetime'] },
+              1000,
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+
+          /* Sensor to Watch Send */
+          avg_sensor_to_watch: { $avg: '$sensor_to_watch_delay' },
+          min_sensor_to_watch: { $min: '$sensor_to_watch_delay' },
+          max_sensor_to_watch: { $max: '$sensor_to_watch_delay' },
+
+          /* Watch to Mobile */
+          avg_watch_to_mobile: { $avg: '$watch_to_mobile_delay' },
+          min_watch_to_mobile: { $min: '$watch_to_mobile_delay' },
+          max_watch_to_mobile: { $max: '$watch_to_mobile_delay' },
+
+          /* Mobile Processing */
+          avg_mobile_processing: { $avg: '$mobile_processing_delay' },
+          min_mobile_processing: { $min: '$mobile_processing_delay' },
+          max_mobile_processing: { $max: '$mobile_processing_delay' },
+
+          /* Total End-to-End */
+          avg_total: { $avg: '$total_delay' },
+          min_total: { $min: '$total_delay' },
+          max_total: { $max: '$total_delay' },
+
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    if (stats.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No data available for statistics',
+        data: null,
+      });
+    }
+
+    const result = stats[0];
+
+    logger.info('Timestamp statistics retrieved', {
+      count: result.count,
+      user_id: user_id || 'all',
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Timestamp statistics retrieved successfully',
+      data: {
+        total_records: result.count,
+        delays_in_seconds: {
+          sensor_to_watch_send: {
+            average: parseFloat(result.avg_sensor_to_watch?.toFixed(2) || 0),
+            minimum: parseFloat(result.min_sensor_to_watch?.toFixed(2) || 0),
+            maximum: parseFloat(result.max_sensor_to_watch?.toFixed(2) || 0),
+            description: 'Time from sensor capture to watch sending data',
+          },
+          watch_to_mobile_bluetooth: {
+            average: parseFloat(result.avg_watch_to_mobile?.toFixed(2) || 0),
+            minimum: parseFloat(result.min_watch_to_mobile?.toFixed(2) || 0),
+            maximum: parseFloat(result.max_watch_to_mobile?.toFixed(2) || 0),
+            description: 'Bluetooth transfer time from watch to phone',
+          },
+          mobile_processing: {
+            average: parseFloat(result.avg_mobile_processing?.toFixed(2) || 0),
+            minimum: parseFloat(result.min_mobile_processing?.toFixed(2) || 0),
+            maximum: parseFloat(result.max_mobile_processing?.toFixed(2) || 0),
+            description: 'Time from phone receiving to sending to MongoDB',
+          },
+          total_end_to_end: {
+            average: parseFloat(result.avg_total?.toFixed(2) || 0),
+            minimum: parseFloat(result.min_total?.toFixed(2) || 0),
+            maximum: parseFloat(result.max_total?.toFixed(2) || 0),
+            description: 'Total time from sensor to MongoDB',
+          },
+        },
+      },
+    });
+
+  } catch (error) {
+    logger.error('Get timestamp stats failed', { error: error.message });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
     });
   }
 };
