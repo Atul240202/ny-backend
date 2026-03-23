@@ -5,7 +5,12 @@
  */
 
 import { Router } from 'express';
-import { batchUploadHealthData, getUserHealthData } from '../controllers/healthData.controller.js';
+import {
+  batchUploadHealthData,
+  getUserHealthData,
+  getHealthDataWithIST,
+  getTimestampStats,
+} from '../controllers/healthData.controller.js';
 import { authMiddleware } from '../middlewares/authMiddleware.js';
 import { validateBatchUpload, validateGetHealthData } from '../validators/healthData.validator.js';
 
@@ -13,5 +18,9 @@ const router = Router();
 
 router.post('/batch', validateBatchUpload, batchUploadHealthData);
 router.get('/', authMiddleware, validateGetHealthData, getUserHealthData);
+
+/* New routes for timestamp analysis */
+router.get('/timestamps/ist', getHealthDataWithIST);
+router.get('/timestamps/stats', getTimestampStats);
 
 export default router;
