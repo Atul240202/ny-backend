@@ -24,11 +24,16 @@ export const batchUploadSchema = Joi.object({
         accel_y: Joi.number().allow(null).optional().default(0),
         accel_z: Joi.number().allow(null).optional().default(0),
         step_count: Joi.number().integer().min(0).allow(null).optional().default(0),
-        /* Timestamp fields for delay tracking */
-        sensor_datetime: Joi.number().allow(null).optional().default(0),
-        watch_data_send_datetime: Joi.number().allow(null).optional().default(0),
-        mobile_receive_datetime: Joi.number().allow(null).optional().default(0),
-        mobile_send_datetime: Joi.number().allow(null).optional().default(0),
+        /* IST formatted timestamp fields */
+        sensor_datetime_ist: Joi.string().allow(null).optional(),
+        watch_data_send_datetime_ist: Joi.string().allow(null).optional(),
+        mobile_receive_datetime_ist: Joi.string().allow(null).optional(),
+        mobile_send_datetime_ist: Joi.string().allow(null).optional(),
+        /* Unix timestamps for backward compatibility (will be converted to IST) */
+        sensor_datetime: Joi.number().allow(null).optional(),
+        watch_data_send_datetime: Joi.number().allow(null).optional(),
+        mobile_receive_datetime: Joi.number().allow(null).optional(),
+        mobile_send_datetime: Joi.number().allow(null).optional(),
         mobile_receive_error_code: Joi.string()
           .allow(null)
           .valid(
