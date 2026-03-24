@@ -11,7 +11,14 @@
  *   accel_x: Number (accelerometer X-axis),
  *   accel_y: Number (accelerometer Y-axis),
  *   accel_z: Number (accelerometer Z-axis),
- *   step_count: Number (cumulative steps)
+ *   step_count: Number (cumulative steps),
+ *
+ *   Timestamp fields for delay analysis:
+ *   sensor_datetime: Number (timestamp from sensor event),
+ *   watch_data_send_datetime: Number (timestamp when watch sends to phone),
+ *   mobile_receive_datetime: Number (timestamp when phone receives data),
+ *   mobile_send_datetime: Number (timestamp when phone sends to MongoDB),
+ *   mobile_receive_error_code: String (error code if watch→phone sync failed)
  * }
  */
 
@@ -50,23 +57,23 @@ const healthDataSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    /* Timestamp fields for delay tracking and analysis */
-    sensor_datetime: {
-      type: Number,
-      default: 0,
+    /* IST Timestamp fields for delay tracking and analysis */
+    sensor_datetime_ist: {
+      type: String,
+      default: null,
       index: true,
     },
-    watch_data_send_datetime: {
-      type: Number,
-      default: 0,
+    watch_data_send_datetime_ist: {
+      type: String,
+      default: null,
     },
-    mobile_receive_datetime: {
-      type: Number,
-      default: 0,
+    mobile_receive_datetime_ist: {
+      type: String,
+      default: null,
     },
-    mobile_send_datetime: {
-      type: Number,
-      default: 0,
+    mobile_send_datetime_ist: {
+      type: String,
+      default: null,
     },
     mobile_receive_error_code: {
       type: String,
@@ -91,6 +98,7 @@ const healthDataSchema = new mongoose.Schema(
       index: true,
     },
   },
+
   {
     timestamps: true,
     collection: 'healthdata',
