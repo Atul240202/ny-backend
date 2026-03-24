@@ -24,12 +24,30 @@ import HealthData from '../models/HealthData.js';
  * - rr_interval_ms: Heart rate RR interval
  * - accel_x, accel_y, accel_z: Accelerometer data
  * - step_count: Cumulative steps
+ * - Stores timestamps in IST format only
  *
  * @param {Object} entry - Raw health data entry
  * @returns {Object} Transformed entry
  * @private
  */
 const transformHealthEntry = (entry) => {
+  /* Helper function to convert Unix timestamp to IST string */
+  const convertToIST = (unixTimestamp) => {
+    if (!unixTimestamp || unixTimestamp === 0) return null;
+    
+    const date = new Date(unixTimestamp);
+    return date.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+  };
+
   return {
     user_id: String(entry.user_id),
     timestamp: String(entry.timestamp),
@@ -38,11 +56,11 @@ const transformHealthEntry = (entry) => {
     accel_y: entry.accel_y !== null && entry.accel_y !== undefined ? Number(entry.accel_y) : 0,
     accel_z: entry.accel_z !== null && entry.accel_z !== undefined ? Number(entry.accel_z) : 0,
     step_count: entry.step_count !== null && entry.step_count !== undefined ? Number(entry.step_count) : 0,
-    /* Timestamp fields */
-    sensor_datetime: entry.sensor_datetime !== null && entry.sensor_datetime !== undefined ? Number(entry.sensor_datetime) : 0,
-    watch_data_send_datetime: entry.watch_data_send_datetime !== null && entry.watch_data_send_datetime !== undefined ? Number(entry.watch_data_send_datetime) : 0,
-    mobile_receive_datetime: entry.mobile_receive_datetime !== null && entry.mobile_receive_datetime !== undefined ? Number(entry.mobile_receive_datetime) : 0,
-    mobile_send_datetime: entry.mobile_send_datetime !== null && entry.mobile_send_datetime !== undefined ? Number(entry.mobile_send_datetime) : 0,
+    /* IST formatted timestamps - convert from Unix if provided */
+    sensor_datetime_ist: entry.sensor_datetime_ist || convertToIST(entry.sensor_datetime),
+    watch_data_send_datetime_ist: entry.watch_data_send_datetime_ist || convertToIST(entry.watch_data_send_datetime),
+    mobile_receive_datetime_ist: entry.mobile_receive_datetime_ist || convertToIST(entry.mobile_receive_datetime),
+    mobile_send_datetime_ist: entry.mobile_send_datetime_ist || convertToIST(entry.mobile_send_datetime),
     mobile_receive_error_code: entry.mobile_receive_error_code || null,
     data_source: entry.data_source || 'PUSH',
   };
@@ -190,7 +208,6 @@ export const getUserHealthData = async (req, res) => {
   }
 };
 
-
 /**
  * Get health data with timestamps in IST
  * Displays all timestamp fields converted to Indian Standard Time
@@ -226,27 +243,27 @@ export const getHealthDataWithIST = async (req, res) => {
 
     const total = await HealthData.countDocuments(query);
 
-    /* Convert timestamps to IST */
+    /* Return data with IST timestamps */
     const dataWithIST = data.map(record => {
-      const convertToIST = (unixTimestamp) => {
-        if (!unixTimestamp || unixTimestamp === 0) return null;
-
-        const date = new Date(unixTimestamp);
-        return date.toLocaleString('en-IN', {
-          timeZone: 'Asia/Kolkata',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-        });
+      /* Helper to parse IST timestamp back to Date for delay calculations */
+      const parseISTtoUnix = (istString) => {
+        if (!istString) return null;
+        try {
+          const [datePart, timePart] = istString.split(', ');
+          const [day, month, year] = datePart.split('/');
+          const [hour, minute, second] = timePart.split(':');
+          const date = new Date(year, month - 1, day, hour, minute, second);
+          return date.getTime();
+        } catch (e) {
+          return null;
+        }
       };
 
-      /* Calculate delays in seconds */
-      const calculateDelay = (end, start) => {
-        if (!end || !start || end === 0 || start === 0) return null;
+      /* Calculate delays in seconds from IST timestamps */
+      const calculateDelay = (endIST, startIST) => {
+        const end = parseISTtoUnix(endIST);
+        const start = parseISTtoUnix(startIST);
+        if (!end || !start) return null;
         return ((end - start) / 1000).toFixed(2);
       };
 
@@ -262,28 +279,23 @@ export const getHealthDataWithIST = async (req, res) => {
         accel_z: record.accel_z,
         step_count: record.step_count,
 
-        /* Timestamps in IST */
-        sensor_datetime_ist: convertToIST(record.sensor_datetime),
-        watch_data_send_datetime_ist: convertToIST(record.watch_data_send_datetime),
-        mobile_receive_datetime_ist: convertToIST(record.mobile_receive_datetime),
-        mobile_send_datetime_ist: convertToIST(record.mobile_send_datetime),
-
-        /* Original Unix timestamps (for reference) */
-        sensor_datetime_unix: record.sensor_datetime,
-        watch_data_send_datetime_unix: record.watch_data_send_datetime,
-        mobile_receive_datetime_unix: record.mobile_receive_datetime,
-        mobile_send_datetime_unix: record.mobile_send_datetime,
+        /* Timestamps in IST (stored in DB) */
+        sensor_datetime_ist: record.sensor_datetime_ist,
+        watch_data_send_datetime_ist: record.watch_data_send_datetime_ist,
+        mobile_receive_datetime_ist: record.mobile_receive_datetime_ist,
+        mobile_send_datetime_ist: record.mobile_send_datetime_ist,
 
         /* Delay analysis (in seconds) */
         delays: {
-          sensor_to_watch_send: calculateDelay(record.watch_data_send_datetime, record.sensor_datetime),
-          watch_send_to_mobile_receive: calculateDelay(record.mobile_receive_datetime, record.watch_data_send_datetime),
-          mobile_receive_to_send: calculateDelay(record.mobile_send_datetime, record.mobile_receive_datetime),
-          total_end_to_end: calculateDelay(record.mobile_send_datetime, record.sensor_datetime),
+          sensor_to_watch_send: calculateDelay(record.watch_data_send_datetime_ist, record.sensor_datetime_ist),
+          watch_send_to_mobile_receive: calculateDelay(record.mobile_receive_datetime_ist, record.watch_data_send_datetime_ist),
+          mobile_receive_to_send: calculateDelay(record.mobile_send_datetime_ist, record.mobile_receive_datetime_ist),
+          total_end_to_end: calculateDelay(record.mobile_send_datetime_ist, record.sensor_datetime_ist),
         },
 
         /* Error tracking */
         mobile_receive_error_code: record.mobile_receive_error_code,
+        data_source: record.data_source,
 
         /* MongoDB timestamps */
         createdAt: record.createdAt,
@@ -338,10 +350,10 @@ export const getTimestampStats = async (req, res) => {
     const { user_id, startDate, endDate } = req.query;
 
     const matchStage = {
-      sensor_datetime: { $gt: 0 },
-      watch_data_send_datetime: { $gt: 0 },
-      mobile_receive_datetime: { $gt: 0 },
-      mobile_send_datetime: { $gt: 0 },
+      sensor_datetime_ist: { $ne: null },
+      watch_data_send_datetime_ist: { $ne: null },
+      mobile_receive_datetime_ist: { $ne: null },
+      mobile_send_datetime_ist: { $ne: null },
     };
 
     if (user_id) {
@@ -356,31 +368,117 @@ export const getTimestampStats = async (req, res) => {
       matchStage.createdAt = { ...matchStage.createdAt, $lte: new Date(endDate) };
     }
 
+    /* Helper function to parse IST string to Unix timestamp */
+    const parseISTtoUnix = (istString) => {
+      if (!istString) return 0;
+      try {
+        const [datePart, timePart] = istString.split(', ');
+        const [day, month, year] = datePart.split('/');
+        const [hour, minute, second] = timePart.split(':');
+        const date = new Date(year, month - 1, day, hour, minute, second);
+        return date.getTime();
+      } catch (e) {
+        return 0;
+      }
+    };
+
     const stats = await HealthData.aggregate([
       { $match: matchStage },
+      {
+        $addFields: {
+          sensor_unix: {
+            $function: {
+              body: function(istString) {
+                if (!istString) return 0;
+                try {
+                  const [datePart, timePart] = istString.split(', ');
+                  const [day, month, year] = datePart.split('/');
+                  const [hour, minute, second] = timePart.split(':');
+                  return new Date(year, month - 1, day, hour, minute, second).getTime();
+                } catch (e) {
+                  return 0;
+                }
+              },
+              args: ['$sensor_datetime_ist'],
+              lang: 'js'
+            }
+          },
+          watch_send_unix: {
+            $function: {
+              body: function(istString) {
+                if (!istString) return 0;
+                try {
+                  const [datePart, timePart] = istString.split(', ');
+                  const [day, month, year] = datePart.split('/');
+                  const [hour, minute, second] = timePart.split(':');
+                  return new Date(year, month - 1, day, hour, minute, second).getTime();
+                } catch (e) {
+                  return 0;
+                }
+              },
+              args: ['$watch_data_send_datetime_ist'],
+              lang: 'js'
+            }
+          },
+          mobile_receive_unix: {
+            $function: {
+              body: function(istString) {
+                if (!istString) return 0;
+                try {
+                  const [datePart, timePart] = istString.split(', ');
+                  const [day, month, year] = datePart.split('/');
+                  const [hour, minute, second] = timePart.split(':');
+                  return new Date(year, month - 1, day, hour, minute, second).getTime();
+                } catch (e) {
+                  return 0;
+                }
+              },
+              args: ['$mobile_receive_datetime_ist'],
+              lang: 'js'
+            }
+          },
+          mobile_send_unix: {
+            $function: {
+              body: function(istString) {
+                if (!istString) return 0;
+                try {
+                  const [datePart, timePart] = istString.split(', ');
+                  const [day, month, year] = datePart.split('/');
+                  const [hour, minute, second] = timePart.split(':');
+                  return new Date(year, month - 1, day, hour, minute, second).getTime();
+                } catch (e) {
+                  return 0;
+                }
+              },
+              args: ['$mobile_send_datetime_ist'],
+              lang: 'js'
+            }
+          }
+        }
+      },
       {
         $project: {
           sensor_to_watch_delay: {
             $divide: [
-              { $subtract: ['$watch_data_send_datetime', '$sensor_datetime'] },
+              { $subtract: ['$watch_send_unix', '$sensor_unix'] },
               1000,
             ],
           },
           watch_to_mobile_delay: {
             $divide: [
-              { $subtract: ['$mobile_receive_datetime', '$watch_data_send_datetime'] },
+              { $subtract: ['$mobile_receive_unix', '$watch_send_unix'] },
               1000,
             ],
           },
           mobile_processing_delay: {
             $divide: [
-              { $subtract: ['$mobile_send_datetime', '$mobile_receive_datetime'] },
+              { $subtract: ['$mobile_send_unix', '$mobile_receive_unix'] },
               1000,
             ],
           },
           total_delay: {
             $divide: [
-              { $subtract: ['$mobile_send_datetime', '$sensor_datetime'] },
+              { $subtract: ['$mobile_send_unix', '$sensor_unix'] },
               1000,
             ],
           },
