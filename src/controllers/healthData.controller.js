@@ -48,6 +48,11 @@ const transformHealthEntry = (entry) => {
     });
   };
 
+  /* CRITICAL: Ensure mobile_send_datetime_ist is ALWAYS populated */
+  const mobileSendTime = entry.mobile_send_datetime_ist 
+    ? entry.mobile_send_datetime_ist 
+    : convertToIST(entry.mobile_send_datetime || Date.now());
+
   return {
     user_id: String(entry.user_id),
     timestamp: String(entry.timestamp),
@@ -60,7 +65,7 @@ const transformHealthEntry = (entry) => {
     sensor_datetime_ist: entry.sensor_datetime_ist || convertToIST(entry.sensor_datetime),
     watch_data_send_datetime_ist: entry.watch_data_send_datetime_ist || convertToIST(entry.watch_data_send_datetime),
     mobile_receive_datetime_ist: entry.mobile_receive_datetime_ist || convertToIST(entry.mobile_receive_datetime),
-    mobile_send_datetime_ist: entry.mobile_send_datetime_ist || convertToIST(entry.mobile_send_datetime),
+    mobile_send_datetime_ist: mobileSendTime, /* ALWAYS populated - never null */
     mobile_receive_error_code: entry.mobile_receive_error_code || null,
     data_source: entry.data_source || 'PUSH',
   };
@@ -69,6 +74,11 @@ const transformHealthEntry = (entry) => {
 /**
  * Batch upload health data
  * Handles data from watch devices with automatic duplicate detection
+ *
+ * DUPLICATE PREVENTION:
+ * - Filters out records with duplicate sensor_datetime_ist BEFORE inserting
+ * - MongoDB unique index on (user_id + timestamp) as secondary check
+ * - Ensures every second has unique timestamp in database
  *
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
@@ -94,7 +104,76 @@ export const batchUploadHealthData = async (req, res) => {
 
     const healthEntries = data.map(entry => transformHealthEntry(entry));
 
-    const result = await HealthData.insertMany(healthEntries, {
+    /* CRITICAL: Remove duplicates based on sensor_datetime_ist BEFORE inserting */
+    /* This ensures every second has unique timestamp */
+    const seenTimestamps = new Set();
+    const uniqueEntries = [];
+    let duplicatesRemoved = 0;
+
+    for (const entry of healthEntries) {
+      /* Skip entries with null sensor_datetime_ist */
+      if (!entry.sensor_datetime_ist) {
+        logger.warn('Skipping entry with null sensor_datetime_ist', {
+          user_id: entry.user_id,
+          timestamp: entry.timestamp,
+        });
+        continue;
+      }
+      
+      const key = `${entry.user_id}_${entry.sensor_datetime_ist}`;
+      
+      if (!seenTimestamps.has(key)) {
+        seenTimestamps.add(key);
+        uniqueEntries.push(entry);
+      } else {
+        duplicatesRemoved++;
+        logger.debug('Duplicate timestamp filtered in batch', {
+          user_id: entry.user_id,
+          sensor_datetime_ist: entry.sensor_datetime_ist,
+        });
+      }
+    }
+
+    if (duplicatesRemoved > 0) {
+      logger.warn('Duplicate timestamps filtered before insert', {
+        user_id: watchUserId,
+        duplicates: duplicatesRemoved,
+        unique: uniqueEntries.length,
+      });
+    }
+
+    /* Check for existing records in DB to prevent duplicates */
+    const existingRecords = await HealthData.find({
+      user_id: watchUserId,
+      sensor_datetime_ist: { $in: uniqueEntries.map(e => e.sensor_datetime_ist) }
+    }).select('sensor_datetime_ist').lean();
+
+    const existingTimestamps = new Set(existingRecords.map(r => r.sensor_datetime_ist));
+    const newEntries = uniqueEntries.filter(e => !existingTimestamps.has(e.sensor_datetime_ist));
+    const dbDuplicates = uniqueEntries.length - newEntries.length;
+
+    if (dbDuplicates > 0) {
+      logger.warn('Existing records found in DB', {
+        user_id: watchUserId,
+        existing: dbDuplicates,
+        new: newEntries.length,
+        sample_existing_timestamps: existingRecords.slice(0, 3).map(r => r.sensor_datetime_ist),
+      });
+    }
+
+    if (newEntries.length === 0) {
+      return res.status(201).json({
+        success: true,
+        message: 'All records already exist in database',
+        data: {
+          inserted: 0,
+          duplicates: data.length,
+          user_id: watchUserId,
+        },
+      });
+    }
+
+    const result = await HealthData.insertMany(newEntries, {
       ordered: false,
     });
 
@@ -111,6 +190,7 @@ export const batchUploadHealthData = async (req, res) => {
       message: 'Health data uploaded successfully',
       data: {
         inserted: insertedCount,
+        duplicates: duplicatesRemoved + dbDuplicates,
         user_id: watchUserId,
       },
     });
