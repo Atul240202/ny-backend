@@ -16,8 +16,6 @@ import authRoutes from './routes/auth.routes.js';
 import userSettingsRoutes from './routes/userSettings.routes.js';
 import appConstantRoutes from './routes/appConstant.routes.js';
 import healthDataRoutes from './routes/healthData.routes.js';
-import { checkHeartRateAndNotify } from './services/pushNotification.js';
-import guardrailLogRoutes from './routes/guardrailLog.routes.js';
 import { sendAlertToUser } from './services/pushNotification.js';
 
 const app = express();
@@ -60,11 +58,6 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/run-check', (req, res) => {
-  checkHeartRateAndNotify();
-  res.send('Heart rate check executed');
-});
-
 app.post('/api/v1/notify/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -81,7 +74,6 @@ app.use('/api/v1', authRoutes);
 app.use('/api/v1', userRoutes);
 app.use('/api/v1', appConstantRoutes);
 app.use('/api/v1/health-data', healthDataRoutes);
-app.use('/api/v1/guardrail-logs', guardrailLogRoutes);
 app.use('/api/v1/reset-sessions', resetRoutes);
 app.use('/api/v1/user-settings', userSettingsRoutes);
 
