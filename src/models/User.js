@@ -12,8 +12,7 @@ const userSchema = new Schema(
   {
     googleId: {
       type: String,
-      required: true,
-      unique: true,
+      sparse: true,
       index: true,
     },
     email: {
@@ -22,8 +21,23 @@ const userSchema = new Schema(
       unique: true,
       index: true,
     },
+    authProvider: {
+      type: String,
+      enum: ['google', 'manual'],
+      required: true,
+      default: 'google',
+    },
     name: String,
     photoUrl: String,
+    phoneNumber: {
+      type: String,
+      sparse: true,
+      index: true,
+    },
+    age: Number,
+    city: String,
+    country: String,
+    gender: String,
     onboardingCompleted: {
       type: Boolean,
       default: false,
