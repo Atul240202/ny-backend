@@ -34,17 +34,12 @@ export const googleAuth = async (req, res) => {
     const client = new OAuth2Client(GOOGLE_CLIENT_ID);
     const { idToken } = req.body;
 
-    logger.info('Google auth request received', { hasIdToken: !!idToken });
-
     if (!idToken) {
-      logger.warn('Google auth failed: idToken is missing');
       return res.status(400).json({
         success: false,
         message: 'idToken is required',
       });
     }
-
-    logger.debug('Verifying Google ID token...');
 
     const ticket = await client.verifyIdToken({
       idToken,
@@ -54,14 +49,11 @@ export const googleAuth = async (req, res) => {
     const payload = ticket.getPayload();
 
     if (!payload) {
-      logger.warn('Google auth failed: Invalid token payload');
       return res.status(401).json({
         success: false,
         message: 'Invalid Google token',
       });
     }
-
-    logger.info('Google token verified successfully', { email: payload.email });
 
     const googleId = payload.sub;
     const email = payload.email;
@@ -76,11 +68,9 @@ export const googleAuth = async (req, res) => {
         email,
         name,
         photoUrl,
+        authProvider: 'google',
         onboardingCompleted: false,
       });
-      logger.info('New user created via Google Auth', { userId: user._id, email: user.email });
-    } else {
-      logger.info('Existing user logged in via Google Auth', { userId: user._id, email: user.email });
     }
 
     const token = jwt.sign(
@@ -88,8 +78,6 @@ export const googleAuth = async (req, res) => {
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN },
     );
-
-    logger.debug('Google Auth successful, returning token');
 
     return res.json({
       success: true,
@@ -207,6 +195,159 @@ export const watchLogin = async (req, res) => {
     return res.status(401).json({
       success: false,
       message: 'Watch authentication failed',
+    });
+  }
+};
+
+export const manualLogin = async (req, res) => {
+  try {
+    const JWT_SECRET = process.env.JWT_SECRET;
+    const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+    const { name, age, phoneNumber, city, country, gender } = req.body;
+
+    if (!JWT_SECRET) {
+      logger.error('JWT_SECRET is not configured');
+      return res.status(500).json({
+        success: false,
+        message: 'Server configuration error',
+      });
+    }
+
+    if (!name || !age || !phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, age, and phone number are required',
+      });
+    }
+
+    // Validate age
+    const ageNum = parseInt(age);
+    if (isNaN(ageNum) || ageNum < 1 || ageNum > 120) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid age',
+      });
+    }
+
+    // Create email from phone number for uniqueness
+    const email = `${phoneNumber}@pause.app`;
+
+    // Use findOneAndUpdate with upsert to prevent race condition
+    const user = await User.findOneAndUpdate(
+      { phoneNumber },
+      {
+        $set: {
+          name,
+          age: ageNum,
+          email,
+          city,
+          country,
+          gender,
+        },
+        $setOnInsert: {
+          phoneNumber,
+          authProvider: 'manual',
+          onboardingCompleted: false,
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    logger.info('Manual user login/created:', { name, phoneNumber, userId: user._id });
+
+    const token = jwt.sign(
+      { userId: user._id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN },
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        token,
+        user: {
+          _id: user._id,
+          email: user.email,
+          name: user.name,
+          photoUrl: user.photoUrl,
+          onboardingCompleted: user.onboardingCompleted,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error('Manual login error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Manual authentication failed',
+    });
+  }
+};
+
+export const updateProfile = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { name, age, phoneNumber, city, country, gender } = req.body;
+
+    if (!userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID',
+      });
+    }
+
+    if (!name || !age || !phoneNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, age, and phone number are required',
+      });
+    }
+
+    // Validate age
+    const ageNum = parseInt(age);
+    if (isNaN(ageNum) || ageNum < 1 || ageNum > 120) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid age',
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Update user profile
+    user.name = name;
+    user.age = ageNum;
+    user.phoneNumber = phoneNumber;
+    user.city = city;
+    user.country = country;
+    user.gender = gender;
+
+    await user.save();
+
+    logger.info('User profile updated:', { userId, name, phoneNumber });
+
+    return res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: {
+        _id: user._id,
+        email: user.email,
+        name: user.name,
+        photoUrl: user.photoUrl,
+        onboardingCompleted: user.onboardingCompleted,
+      },
+    });
+  } catch (error) {
+    logger.error('Update profile error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update profile',
     });
   }
 };
