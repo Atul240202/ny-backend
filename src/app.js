@@ -71,6 +71,19 @@ app.post('/api/v1/notify/:userId', async (req, res) => {
   }
 });
 
+// GET version — paste in browser to trigger: /api/v1/notify/:userId?type=HEART_RATE_ALERT&value=110
+app.get('/api/v1/notify/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { type = 'HEART_RATE_ALERT', value = '110' } = req.query;
+    await sendAlertToUser(userId, { type, value });
+    res.send(`Notification sent to user ${userId} (type: ${type}, value: ${value})`);
+  } catch (error) {
+    logger.error('Error in notify GET endpoint:', error);
+    res.status(500).send(`Failed: ${error.message}`);
+  }
+});
+
 app.use('/api/v1', authRoutes);
 app.use('/api/v1', userRoutes);
 app.use('/api/v1', appConstantRoutes);
