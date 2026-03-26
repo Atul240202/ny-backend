@@ -5,12 +5,14 @@
  */
 
 import { Router } from 'express';
-import { googleAuth, getMe, watchLogin } from '../controllers/auth.controller.js';
+import { googleAuth, getMe, watchLogin, manualLogin, updateProfile } from '../controllers/auth.controller.js';
 import { authMiddleware } from '../middlewares/authMiddleware.js';
 
 const router = Router();
 
 router.post('/auth/google', googleAuth);
+router.post('/auth/manual', manualLogin);
+router.put('/auth/profile', authMiddleware, updateProfile);
 router.post('/auth/watch', watchLogin);
 router.get('/me', authMiddleware, getMe);
 
