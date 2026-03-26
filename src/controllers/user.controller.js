@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 
 import User from '../models/User.js';
 import { logger } from '../utils/logger.js';
-import UserProfile from '../models/userProfile.js';
+import UserProfile from '../models/UserProfile.js';
 import { ONBOARDING_V1, ONBOARDING_VERSION } from '../constants/onboardingQuestions.js';
 
 export const createUser = async (request, response) => {
@@ -182,6 +182,55 @@ export const completeOnboarding = async (req, res) => {
     });
   }
 };
+// Restart onboarding - reset onboarding status
+export const restartOnboarding = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID',
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    user.onboardingCompleted = false;
+    await user.save();
+
+    // Optionally delete the user profile to reset all onboarding data
+    await UserProfile.deleteOne({ userId });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Onboarding restarted successfully',
+      data: {
+        _id: user._id,
+        email: user.email,
+        name: user.name,
+        photoUrl: user.photoUrl,
+        onboardingCompleted: user.onboardingCompleted,
+      },
+    });
+
+  } catch (error) {
+    logger.error('Restart onboarding error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+    });
+  }
+};
+
 // Update FCM token for push notifications
 export const updateFcmToken = async (req, res) => {
   try {
