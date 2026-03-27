@@ -32,5 +32,6 @@ export async function sendAlertToUser(userId, data) {
     }
   } catch (error) {
     logger.error('Error sending targeted notification:', error);
+    throw error;
   }
 }
