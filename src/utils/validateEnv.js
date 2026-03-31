@@ -12,6 +12,14 @@ const requiredEnvVars = [
   'NODE_ENV',
 ];
 
+const digitalOceanEnvVars = [
+  'DO_ACCESS_KEY',
+  'DO_SECRET_KEY',
+  'DO_BUCKET',
+  'DO_ENDPOINT',
+  'DO_REGION',
+];
+
 const firebaseEnvVars = [
   'FIREBASE_PROJECT_ID',
   'FIREBASE_PRIVATE_KEY',
@@ -32,6 +40,12 @@ export const validateEnv = () => {
 
   if (!hasFirebaseFile && !hasFirebaseEnvVars) {
     console.warn('Warning: Firebase credentials not configured. Either set FIREBASE_SERVICE_ACCOUNT_PATH or provide FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, and FIREBASE_CLIENT_EMAIL');
+  }
+
+  const hasDigitalOceanVars = digitalOceanEnvVars.every((varName) => process.env[varName]);
+
+  if (!hasDigitalOceanVars) {
+    console.warn('Warning: DigitalOcean Spaces not configured. Voice recordings will not be uploaded. Required: DO_ACCESS_KEY, DO_SECRET_KEY, DO_BUCKET, DO_ENDPOINT, DO_REGION');
   }
 
   if (missing.length > 0) {
