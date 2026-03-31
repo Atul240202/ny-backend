@@ -7,7 +7,7 @@ import {Router} from 'express';
 import { createUser, updateOnboarding, completeOnboarding, updateFcmToken, restartOnboarding} from '../controllers/user.controller.js';
 import { createUserProfile } from '../controllers/userProfile.controller.js';
 import { authMiddleware } from '../middlewares/authMiddleware.js';
-
+import { upload } from '../config/multer.js';
 const router = Router();
 
 router.post('/users', createUser);
