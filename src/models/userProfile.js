@@ -19,6 +19,16 @@ const userProfileSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       required: true,
     },
+
+    voiceRecordingUrl: {
+      type: String,
+      default: null,
+    },
+
+    voiceRecordingKey: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true },
 );
