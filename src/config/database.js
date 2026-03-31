@@ -13,16 +13,18 @@ const connectDB = async () => {
     const options = {
       maxPoolSize: process.env.NODE_ENV === 'production' ? 20 : 10,
       minPoolSize: process.env.NODE_ENV === 'production' ? 5 : 2,
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000, // Reduced from 5000 to 10000
       socketTimeoutMS: 45000,
       family: 4,
       retryWrites: true,
       w: 'majority',
     };
 
+    console.log('Attempting to connect to MongoDB...');
     const conn = await mongoose.connect(process.env.MONGODB_URI, options);
 
     logger.info(`MongoDB Connected: ${conn.connection.host}`);
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
 
     mongoose.connection.on('error', (err) => {
       logger.error('MongoDB connection error:', err);
@@ -43,7 +45,13 @@ const connectDB = async () => {
     });
   } catch (error) {
     logger.error('MongoDB connection failed:', error.message);
-    process.exit(1);
+    console.error('MongoDB connection failed:', error.message);
+    
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    } else {
+      console.log('Continuing without MongoDB - some features may not work');
+    }
   }
 };
 
