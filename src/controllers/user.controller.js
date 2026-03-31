@@ -8,8 +8,9 @@ import mongoose from 'mongoose';
 
 import User from '../models/User.js';
 import { logger } from '../utils/logger.js';
-import UserProfile from '../models/userProfile.js';
+import UserProfile from '../models/UserProfile.js';
 import { ONBOARDING_V1, ONBOARDING_VERSION } from '../constants/onboardingQuestions.js';
+import { uploadAudioToSpaces } from '../services/uploadAudio.js';
 
 export const createUser = async (request, response) => {
   try {
@@ -107,39 +108,77 @@ export const updateOnboarding = async (req, res) => {
 };
 
 export const completeOnboarding = async (req, res) => {
-  const userId = req.userId;
-  const { responses } = req.body;
-
-  if (!mongoose.Types.ObjectId.isValid(userId)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Invalid user ID',
-    });
-  }
-
-  if (!responses || !Array.isArray(responses)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Responses array is required',
-    });
-  }
-
-  const requiredIds = ONBOARDING_V1;
-
-  const receivedIds = responses.map(r => r.id);
-
-  const allQuestionsAnswered = requiredIds.every(id =>
-    receivedIds.includes(id),
-  );
-
-  if (!allQuestionsAnswered) {
-    return res.status(400).json({
-      success: false,
-      message: 'All onboarding questions must be answered',
-    });
-  }
-
+  console.log('=== NEW CODE VERSION 2.0 - COMPLETE ONBOARDING CALLED ===');
   try {
+    const userId = req.userId;
+    const voiceRecording = req.file;
+
+    console.log('Complete onboarding called');
+    console.log('User ID:', userId);
+    console.log('Voice recording file:', voiceRecording);
+    console.log('Request body:', req.body);
+    console.log('Request body type:', typeof req.body);
+    console.log('Request body keys:', req.body ? Object.keys(req.body) : 'body is null/undefined');
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user ID',
+      });
+    }
+
+    // Check if req.body exists
+    if (!req.body || Object.keys(req.body).length === 0) {
+      console.error('req.body is undefined or empty');
+      return res.status(400).json({
+        success: false,
+        message: 'Request body is missing or invalid',
+      });
+    }
+
+    // Parse responses - it comes as a JSON string from FormData
+    let parsedResponses;
+    if (!req.body.responses) {
+      console.error('req.body.responses is undefined');
+      return res.status(400).json({
+        success: false,
+        message: 'Responses are required',
+      });
+    }
+    
+    console.log('Responses value:', req.body.responses);
+    console.log('Responses type:', typeof req.body.responses);
+    
+    try {
+      parsedResponses = typeof req.body.responses === 'string' 
+        ? JSON.parse(req.body.responses) 
+        : req.body.responses;
+    } catch (parseError) {
+      console.error('Failed to parse responses:', parseError);
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid responses format',
+      });
+    }
+
+    if (!parsedResponses || !Array.isArray(parsedResponses)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Responses array is required',
+      });
+    }
+
+    const requiredIds = ONBOARDING_V1;
+    const receivedIds = parsedResponses.filter(r => r && r.id).map(r => r.id);
+    const allQuestionsAnswered = requiredIds.every(id => receivedIds.includes(id));
+
+    if (!allQuestionsAnswered) {
+      return res.status(400).json({
+        success: false,
+        message: 'All onboarding questions must be answered',
+      });
+    }
+
     const user = await User.findById(userId);
 
     if (!user) {
@@ -149,16 +188,39 @@ export const completeOnboarding = async (req, res) => {
       });
     }
 
+    // Prepare profile data
+    const profileData = {
+      onboardingVersion: ONBOARDING_VERSION,
+      responses: {
+        values: parsedResponses,
+      },
+    };
+
+    // Upload voice recording to DigitalOcean Spaces if file was provided
+    if (voiceRecording) {
+      try {
+        console.log('Attempting to upload voice recording...');
+        const { url, key } = await uploadAudioToSpaces(voiceRecording);
+        profileData.voiceRecordingUrl = url;
+        profileData.voiceRecordingKey = key;
+        logger.info('Voice recording uploaded to Spaces:', {
+          userId,
+          key,
+          url,
+        });
+        console.log('Voice recording uploaded successfully');
+      } catch (uploadError) {
+        console.error('Voice recording upload failed:', uploadError);
+        logger.error('Voice recording upload failed:', uploadError);
+        // Continue with onboarding even if upload fails - don't block the user
+      }
+    } else {
+      console.log('No voice recording file provided');
+    }
+
     await UserProfile.updateOne(
       { userId },
-      {
-        $set: {
-          onboardingVersion: ONBOARDING_VERSION,
-          responses: {
-            values: responses,
-          },
-        },
-      },
+      { $set: profileData },
       { upsert: true },
     );
 
@@ -171,14 +233,16 @@ export const completeOnboarding = async (req, res) => {
     });
 
   } catch (error) {
+    console.error('Complete onboarding error:', error);
     logger.error('Complete onboarding failed', {
-      userId,
+      userId: req.userId,
       error: error.message,
+      stack: error.stack,
     });
 
     return res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
     });
   }
 };
