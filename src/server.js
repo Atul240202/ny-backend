@@ -18,25 +18,30 @@ const PORT = process.env.PORT || 5001;
 
 validateEnv();
 initializeFirebase();
-connectDB();
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-  logger.info(`Server running on http://0.0.0.0:${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV}`);
-});
-
-const gracefulShutdown = (signal) => {
-  logger.info(`${signal} received. Starting graceful shutdown...`);
-  server.close(() => {
-    logger.info('HTTP server closed');
-    process.exit(0);
+// Start server after attempting DB connection
+(async () => {
+  await connectDB();
+  
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    logger.info(`Server running on http://0.0.0.0:${PORT}`);
+    logger.info(`Environment: ${process.env.NODE_ENV}`);
   });
 
-  setTimeout(() => {
-    logger.error('Forced shutdown after timeout');
-    process.exit(1);
-  }, 10000);
-};
+  const gracefulShutdown = (signal) => {
+    logger.info(`${signal} received. Starting graceful shutdown...`);
+    server.close(() => {
+      logger.info('HTTP server closed');
+      process.exit(0);
+    });
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    setTimeout(() => {
+      logger.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+})();
