@@ -34,7 +34,7 @@ const transformHealthEntry = (entry) => {
   /* Helper function to convert Unix timestamp to IST string */
   const convertToIST = (unixTimestamp) => {
     if (!unixTimestamp || unixTimestamp === 0) return null;
-    
+
     const date = new Date(unixTimestamp);
     return date.toLocaleString('en-IN', {
       timeZone: 'Asia/Kolkata',
@@ -49,8 +49,8 @@ const transformHealthEntry = (entry) => {
   };
 
   /* CRITICAL: Ensure mobile_send_datetime_ist is ALWAYS populated */
-  const mobileSendTime = entry.mobile_send_datetime_ist 
-    ? entry.mobile_send_datetime_ist 
+  const mobileSendTime = entry.mobile_send_datetime_ist
+    ? entry.mobile_send_datetime_ist
     : convertToIST(entry.mobile_send_datetime || Date.now());
 
   return {
@@ -95,6 +95,9 @@ export const batchUploadHealthData = async (req, res) => {
       });
     }
 
+    const mismatch = data.some(r => String(r.user_id) !== String(req.userId));
+    if (mismatch) return res.status(403).json({ success: false, message: 'User ID mismatch' });
+
     const watchUserId = data[0]?.user_id;
 
     logger.info('Watch data sync started', {
@@ -119,9 +122,9 @@ export const batchUploadHealthData = async (req, res) => {
         });
         continue;
       }
-      
+
       const key = `${entry.user_id}_${entry.sensor_datetime_ist}`;
-      
+
       if (!seenTimestamps.has(key)) {
         seenTimestamps.add(key);
         uniqueEntries.push(entry);
@@ -468,7 +471,7 @@ export const getTimestampStats = async (req, res) => {
         $addFields: {
           sensor_unix: {
             $function: {
-              body: function(istString) {
+              body: function (istString) {
                 if (!istString) return 0;
                 try {
                   const [datePart, timePart] = istString.split(', ');
@@ -485,7 +488,7 @@ export const getTimestampStats = async (req, res) => {
           },
           watch_send_unix: {
             $function: {
-              body: function(istString) {
+              body: function (istString) {
                 if (!istString) return 0;
                 try {
                   const [datePart, timePart] = istString.split(', ');
@@ -502,7 +505,7 @@ export const getTimestampStats = async (req, res) => {
           },
           mobile_receive_unix: {
             $function: {
-              body: function(istString) {
+              body: function (istString) {
                 if (!istString) return 0;
                 try {
                   const [datePart, timePart] = istString.split(', ');
@@ -519,7 +522,7 @@ export const getTimestampStats = async (req, res) => {
           },
           mobile_send_unix: {
             $function: {
-              body: function(istString) {
+              body: function (istString) {
                 if (!istString) return 0;
                 try {
                   const [datePart, timePart] = istString.split(', ');

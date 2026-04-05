@@ -16,7 +16,7 @@ import { validateBatchUpload, validateGetHealthData } from '../validators/health
 
 const router = Router();
 
-router.post('/batch', validateBatchUpload, batchUploadHealthData);
+router.post('/batch', authMiddleware, validateBatchUpload, batchUploadHealthData);
 router.get('/', authMiddleware, validateGetHealthData, getUserHealthData);
 
 /* New routes for timestamp analysis */
