@@ -18,6 +18,7 @@ import appConstantRoutes from './routes/appConstant.routes.js';
 import healthDataRoutes from './routes/healthData.routes.js';
 import guardrailLogRoutes from './routes/guardrailLog.routes.js';
 import { sendAlertToUser } from './services/pushNotification.js';
+import audioSessionRoutes from './routes/audioSession.routes.js';
 
 const app = express();
 
@@ -91,6 +92,7 @@ app.use('/api/v1/health-data', healthDataRoutes);
 app.use('/api/v1/guardrail-logs', guardrailLogRoutes);
 app.use('/api/v1/reset-sessions', resetRoutes);
 app.use('/api/v1/user-settings', userSettingsRoutes);
+app.use('/api/v1', audioSessionRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
